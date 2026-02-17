@@ -13,7 +13,7 @@ def bigquery_tool(line, cell):
     table_id = line.strip()
     user_prompt = cell.strip().lower()
     
-    # --- 1. UI Elements ---
+    # --- UI Elements ---
     refresh_btn = widgets.Button(description="🔄 Sync Data", button_style='primary')
     filter_by = widgets.Dropdown(description='Filter By:')
     filter_val = widgets.Text(description='Value:', placeholder='e.g. active')
@@ -34,7 +34,7 @@ def bigquery_tool(line, cell):
 
     def update_viz(change=None):
         with out_area:
-            clear_output(wait=True) # Fixes the double-print bug
+            clear_output(wait=True) 
             df = current_df[0]
             if df is None or not select_by.value: return
 
@@ -42,7 +42,6 @@ def bigquery_tool(line, cell):
                 view_df = df.copy()
                 targets = list(select_by.value)
                 
-                # Pre-convert to numeric for visualization stability
                 for t in targets:
                     view_df[t] = pd.to_numeric(view_df[t], errors='coerce')
 
@@ -51,7 +50,7 @@ def bigquery_tool(line, cell):
 
                 func = agg_func.value
                 
-                # --- 2. Data Processing Pipeline ---
+                # --- Pipeline Logic ---
                 if func == 'count':
                     plot_df = view_df.groupby(targets).size().reset_index(name='count_records')
                     y_axis = 'count_records'
@@ -63,12 +62,10 @@ def bigquery_tool(line, cell):
                     plot_df = series_res.reset_index(name=y_axis)
                     sql_query = f"SELECT {', '.join(targets)}, {func.upper()}({main_measure}) AS {y_axis} FROM `{table_id}` GROUP BY {', '.join(targets)}"
                 else:
-                    # RAW MODE: Supports Tabular and Scatter Plot
                     plot_df = view_df[targets].dropna()
                     y_axis = targets[-1] if len(targets) > 1 else targets[0]
                     sql_query = f"SELECT {', '.join(targets)} FROM `{table_id}`"
 
-                # 3. Labeling Logic: ONLY apply flattening for aggregations
                 if len(targets) > 1 and func != 'none':
                     plot_df['Group Combination'] = plot_df[targets].astype(str).agg(' | '.join, axis=1)
                     x_axis = 'Group Combination'
@@ -79,12 +76,11 @@ def bigquery_tool(line, cell):
                     clear_output(wait=True)
                     display(widgets.HTML(f"<pre style='background:#1e1e1e; color:#85c1e9; padding:10px;'>{sql_query}</pre>"))
 
-                # --- 4. Unified Rendering Block ---
+                # --- Rendering Fix ---
                 if output_type.value == 'Tabular Data':
                     display(plot_df)
                 else:
                     if output_type.value == 'Scatter Plot':
-                        # Uses first selection (X) vs last selection (Y)
                         fig = px.scatter(plot_df, x=targets[0], y=y_axis)
                     elif output_type.value == 'Box Plot': 
                         fig = px.box(plot_df, y=y_axis, x=targets[0] if len(targets) > 1 and func == 'none' else None)
@@ -94,7 +90,7 @@ def bigquery_tool(line, cell):
                         fig = px.bar(plot_df, x=x_axis, y=y_axis)
                     
                     fig.update_layout(height=450, template="plotly_white", xaxis_title=x_axis)
-                    fig.show()
+                    fig.show(renderer="colab") # Explicitly set renderer for magic libraries
             except Exception as e:
                 print(f"Viz Error: {e}")
 
@@ -106,7 +102,6 @@ def bigquery_tool(line, cell):
                 filter_by.options = [''] + all_cols
                 select_by.options = all_cols
                 
-                # Synchronize UI state with the user prompt
                 if any(k in user_prompt for k in ["dist", "count", "mean", "scatter"]):
                     agg_func.value = 'count' if "count" in user_prompt else ('mean' if "mean" in user_prompt else 'none')
                     output_type.value = 'Scatter Plot' if "scatter" in user_prompt else 'Bar Chart'
