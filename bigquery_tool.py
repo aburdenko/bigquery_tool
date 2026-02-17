@@ -5,17 +5,18 @@ import plotly.io as pio
 import pandas as pd
 from IPython.display import display, clear_output
 
-# THE FIX: Bypass 'colab' renderer for 'plotly_mimetype'
+# THE FIX: Force 'plotly_mimetype' to ensure Colab frontend sees the chart
 pio.renderers.default = "plotly_mimetype"
 
 def load_ipython_extension(ipython):
+    """Register the magic when %load_ext bigquery_tool is called."""
     ipython.register_magic_function(bigquery_tool, magic_kind='cell')
 
 def bigquery_tool(line, cell):
     table_id = line.strip()
     user_prompt = cell.strip().lower()
     
-    # --- UI Elements ---
+    # --- 1. UI Elements ---
     refresh_btn = widgets.Button(description="🔄 Sync Data", button_style='primary')
     filter_by = widgets.Dropdown(description='Filter By:')
     filter_val = widgets.Text(description='Value:', placeholder='e.g. active')
@@ -36,7 +37,7 @@ def bigquery_tool(line, cell):
 
     def update_viz(change=None):
         with out_area:
-            clear_output(wait=True)
+            clear_output(wait=True) 
             df = current_df[0]
             if df is None or not select_by.value: return
 
@@ -51,7 +52,7 @@ def bigquery_tool(line, cell):
 
                 func = agg_func.value
                 
-                # --- Pipeline Logic ---
+                # --- 2. Pipeline Logic ---
                 if func == 'count':
                     plot_df = view_df.groupby(targets).size().reset_index(name='count_records')
                     y_axis = 'count_records'
@@ -64,6 +65,7 @@ def bigquery_tool(line, cell):
                     plot_df = view_df[targets].dropna()
                     y_axis = targets[-1] if len(targets) > 1 else targets[0]
 
+                # Standardize X-Axis - ONLY flatten if aggregating
                 if len(targets) > 1 and func != 'none':
                     plot_df['Group Combination'] = plot_df[targets].astype(str).agg(' | '.join, axis=1)
                     x_axis = 'Group Combination'
@@ -72,10 +74,10 @@ def bigquery_tool(line, cell):
 
                 with sql_area:
                     clear_output(wait=True)
-                    sql_query = f"SELECT {', '.join(targets)} FROM `{table_id}`" # Simplified preview
+                    sql_query = f"SELECT {', '.join(targets)} FROM `{table_id}`"
                     display(widgets.HTML(f"<pre style='background:#1e1e1e; color:#85c1e9; padding:10px;'>{sql_query}</pre>"))
 
-                # --- THE RENDERING FIX ---
+                # --- 3. Rendering Fix ---
                 if output_type.value == 'Tabular Data':
                     display(plot_df)
                 else:
@@ -89,7 +91,7 @@ def bigquery_tool(line, cell):
                         fig = px.bar(plot_df, x=x_axis, y=y_axis)
                     
                     fig.update_layout(height=450, template="plotly_white", xaxis_title=x_axis)
-                    # Use direct display for MIME-type figures instead of fig.show()
+                    # Use direct display for MIME-type instead of .show()
                     display(fig) 
             except Exception as e:
                 print(f"Viz Error: {e}")
