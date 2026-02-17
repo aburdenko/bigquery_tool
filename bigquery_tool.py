@@ -5,8 +5,8 @@ import plotly.io as pio
 import pandas as pd
 from IPython.display import display, clear_output
 
-# Ensure Plotly is set to Colab mode globally for the library
-pio.renderers.default = "colab"
+# THE FIX: Force 'plotly_mimetype' for reliable rendering in Colab
+pio.renderers.default = "plotly_mimetype"
 
 def load_ipython_extension(ipython):
     """Register the magic when %load_ext bigquery_tool is called."""
@@ -37,15 +37,13 @@ def bigquery_tool(line, cell):
 
     def update_viz(change=None):
         with out_area:
-            clear_output(wait=True) # Clears the area to fix double-print
+            clear_output(wait=True)
             df = current_df[0]
             if df is None or not select_by.value: return
 
             try:
                 view_df = df.copy()
                 targets = list(select_by.value)
-                
-                # Pre-convert to numeric for visualization stability
                 for t in targets:
                     view_df[t] = pd.to_numeric(view_df[t], errors='coerce')
 
@@ -54,38 +52,29 @@ def bigquery_tool(line, cell):
 
                 func = agg_func.value
                 
-                # --- 2. Data Processing Pipeline ---
+                # --- 2. Data Processing ---
                 if func == 'count':
                     plot_df = view_df.groupby(targets).size().reset_index(name='count_records')
                     y_axis = 'count_records'
-                    sql_query = f"SELECT {', '.join(targets)}, COUNT(*) AS count_records FROM `{table_id}` GROUP BY {', '.join(targets)}"
                 elif func != 'none':
                     main_measure = targets[-1]
                     y_axis = f"{func}_{main_measure}"
                     series_res = view_df.groupby(targets)[main_measure].agg(func)
                     plot_df = series_res.reset_index(name=y_axis)
-                    sql_query = f"SELECT {', '.join(targets)}, {func.upper()}({main_measure}) AS {y_axis} FROM `{table_id}` GROUP BY {', '.join(targets)}"
                 else:
                     plot_df = view_df[targets].dropna()
                     y_axis = targets[-1] if len(targets) > 1 else targets[0]
-                    sql_query = f"SELECT {', '.join(targets)} FROM `{table_id}`"
 
-                # Standardize Labels: ONLY apply Group Combination if aggregating
                 if len(targets) > 1 and func != 'none':
                     plot_df['Group Combination'] = plot_df[targets].astype(str).agg(' | '.join, axis=1)
                     x_axis = 'Group Combination'
                 else:
                     x_axis = targets[0]
 
-                with sql_area:
-                    clear_output(wait=True)
-                    display(widgets.HTML(f"<pre style='background:#1e1e1e; color:#85c1e9; padding:10px;'>{sql_query}</pre>"))
-
-                # --- 3. Rendering ---
+                # --- 3. Rendering Logic ---
                 if output_type.value == 'Tabular Data':
                     display(plot_df)
                 else:
-                    # Logic to ensure the chart is rendered within the colab context
                     if output_type.value == 'Scatter Plot':
                         fig = px.scatter(plot_df, x=targets[0], y=y_axis)
                     elif output_type.value == 'Box Plot': 
@@ -96,8 +85,8 @@ def bigquery_tool(line, cell):
                         fig = px.bar(plot_df, x=x_axis, y=y_axis)
                     
                     fig.update_layout(height=450, template="plotly_white", xaxis_title=x_axis)
-                    # Use explicit Plotly render call for magic libraries
-                    pio.show(fig) 
+                    # Use MIME-type display instead of .show() for external extensions
+                    display(fig) 
             except Exception as e:
                 print(f"Viz Error: {e}")
 
